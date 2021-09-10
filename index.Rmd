@@ -1,0 +1,438 @@
+---
+title: "Replicate Analysis"
+author: "Zac Driscoll"
+date: "9/2/2021"
+output: 
+  html_document:
+    code_folding: hide
+---
+## {.tabset}
+
+```{r setup, include=FALSE}
+library(mmsd.wq)
+library(tidyverse)
+library(sf)
+library(leaflet)
+
+knitr::opts_chunk$set(
+message = FALSE, warning = FALSE
+)
+
+data_yr <-  calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("year"))
+
+data_param <-  calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("parameter"))
+
+data_wtb <-  calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("water_body"))
+
+data_site<-  calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("sitecode","site_type"))
+
+data_yr_param <- calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("parameter","year"))
+
+data_param_wtb <- calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("parameter","water_body"))
+
+data_yr_wtb <- calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("year","water_body"))
+
+data_param_site <- calculate_rep_exceedance(
+  start_date = "2015-01-01", 
+  end_date = "2021-12-31",
+  grouping = c("parameter","sitecode","depth"))
+
+
+```
+
+### General Analysis
+<h3> Number of Exceedances over time </h3>
+
+```{r,  fig.width = 10, fig.height = 7}
+
+p <-data_yr[[2]] %>%
+  filter(perc_exceeds != 0) %>%
+  ggplot() +
+  geom_bar(aes(x = year,y = perc_exceeds),
+           stat = "identity") +
+  ylab("Percent Exceedane")
+
+plotly::ggplotly(p)
+
+
+
+```
+<br>
+<h3> Percentage of Exceedances by Parameter </h3>
+
+```{r,  fig.width = 10, fig.height = 7}
+
+p <-data_param[[2]] %>%
+  filter(perc_exceeds != 0) %>%
+  left_join(param_lookup_table %>%
+              select(parameter,label_name)) %>%
+  select(-parameter) %>%
+  rename(parameter = label_name) %>% 
+  mutate(parameter = fct_reorder(parameter,perc_exceeds,max)) %>%
+  ggplot() +
+  geom_bar(aes(x = parameter,y = perc_exceeds),
+           stat = "identity") +
+  ylab("Perent Exceedance") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+plotly::ggplotly(p)
+
+```
+<br>
+<h3> Percentage of Exceedances by Waterbody </h3>
+```{r,  fig.width = 10, fig.height = 7}
+
+p <-data_wtb[[2]] %>%
+  filter(perc_exceeds != 0) %>%
+  mutate(water_body = fct_reorder(water_body,perc_exceeds,max)) %>%
+  ggplot() +
+  geom_bar(aes(x = water_body,y = perc_exceeds),
+           stat = "identity") +
+  ylab("Perent Exceedance") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+plotly::ggplotly(p)
+
+```
+
+
+<br>
+<h3> Percentage of Exceedances by Site </h3>
+```{r,  fig.width = 10, fig.height = 7}
+
+site_perc <- 
+  data_site[[2]] %>%
+   left_join(mmsd_wq_sites %>%
+              select(sitecode,
+                     latitude,
+                     longitude)) %>%
+  st_as_sf(coords = c("longitude","latitude"),crs = 4326) 
+
+site_perc_shared <- crosstalk::SharedData$new(site_perc)
+
+crosstalk::filter_slider("range_exceed2", "Percent Exceedance", 
+              site_perc_shared, ~perc_exceeds, width = "100%")
+
+pal <- colorNumeric(
+  palette = colorRampPalette(c('green','yellow','orange','red'))(100), 
+  domain = site_perc$perc_exceeds)
+
+leaflet()%>%
+  leaflet::addPolylines(
+    data = mke_rivers,
+    color = "blue",
+    popup = ~ paste(" River: ", ROW_NAME)) %>% 
+  addCircles(data = site_perc_shared,
+              color = ~pal(perc_exceeds),
+              fillColor = ~pal(perc_exceeds),
+             fillOpacity = 0.85,
+             radius = 200,
+              popup = ~ paste(" Site: ",sitecode,"<br>",
+                              " Exceedances: ",exceeds,"<br>",
+                              " Samples: ",samples,"<br>",
+                              " Percent Exceedance: ",perc_exceeds,"%",
+                              sep =""))%>%
+  addProviderTiles(providers$Esri.WorldImagery)%>%
+  addLegend("bottomright", pal  = pal, values = site_perc$perc_exceeds,
+            title = "Percent Exceedance",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1
+  )
+
+
+```
+
+### Parameter:Year
+
+<br>
+<h3> Figure 2: Heatmap - Parameter:Year </h3>
+A heatmap showing the percentage of samples that exceeded the replicate standard
+by year. Red cells indicate a higher percentage of samples exceeding the standard. <br>
+```{r, fig.width = 10, fig.height = 7, warning= FALSE}
+
+#heat map - param wtb
+z <- data_yr_param[[2]] %>%
+  filter(!parameter %in% c("hardness", 
+                           "total_inorganic_carbon_2",
+                           "nitrate_nitrogen_auto_chemistry")) %>%
+  left_join(param_lookup_table %>%
+              select(parameter,label_name)) %>%
+  group_by(label_name) %>%
+  mutate(sum_exceeds = sum(perc_exceeds))  %>%
+  ungroup() %>%
+  mutate(label_name = forcats::fct_reorder(label_name, sum_exceeds, max)) %>%
+  rename(Percent_Exceedance = perc_exceeds) 
+
+p <-  ggplot(data = z) +
+  geom_tile(aes(
+    x = year,
+    y = label_name,
+    text = samples,
+    labels = exceeds,
+    fill = Percent_Exceedance
+  )) +
+  geom_text(aes(
+    x = year,
+    y = label_name,
+    label = paste0(Percent_Exceedance, "%")
+  ),
+  size = 3) +
+  scale_fill_gradient(low = "#d6e4ff", high = "red") +
+  ylab("")+
+  xlab("")
+
+plotly::ggplotly(p)
+
+```
+<br>
+<h3> Figure 3: Time series</h3>
+Select a parameter to see the percentage of sample exceeding the replicate
+exceedance over time. <br>
+```{r, echo = FALSE, warning = FALSE}
+
+data_shared <- data_yr_param[[2]] %>%
+  left_join(param_lookup_table %>%
+              select(parameter,label_name))
+
+exceed_shared <- crosstalk::SharedData$new(data_shared)
+
+  crosstalk::filter_select(
+    "oc_seasonal_param",
+    "Select a Parameter:",
+    multiple = TRUE,
+    sharedData = exceed_shared,
+    ~ label_name
+  )
+
+plotly::plot_ly(
+  data = exceed_shared,
+  y = ~ perc_exceeds,
+  x = ~ year,
+  type = 'scatter',
+  mode = 'line',
+  color = ~label_name
+)
+
+```
+
+### Waterbody:Year
+
+<h3> Figure 5: Waterbdy:Year Heatmap </h3>
+A heatmap showing the percentage of samples that exceeded the replicate standard
+by waterbody Red cells indicate a higher percentage of samples exceeding the standard. <br>
+```{r, fig.width = 10, fig.height = 7, warning= FALSE}
+p <- data_yr_wtb[[2]] %>%
+  group_by(water_body) %>%
+  mutate(sum_exceeds = sum(perc_exceeds))  %>%
+  ungroup() %>%
+  mutate(water_body = forcats::fct_reorder(water_body, sum_exceeds, max)) %>%
+  rename(Percent_Exceedance = perc_exceeds) %>%
+  ggplot() +
+  geom_tile(aes(
+    x = year,
+    y = water_body,
+    text = samples,
+    labels = exceeds,
+    fill = Percent_Exceedance
+  )) +
+  geom_text(aes(
+    x = year,
+    y = water_body,
+    label = paste0(Percent_Exceedance, "%")
+  ),
+  size = 3) +
+  scale_fill_gradient(low = "#d6e4ff", high = "red") +
+  ylab("")+
+  xlab("")
+
+plotly::ggplotly(p)
+
+```
+
+<br>
+<h3> Figure 6: Water body exceedance time series</h3>
+Select a water body to see the percentage of sample exceeding the replicate
+exceedance over time. <br>
+```{r, echo = FALSE, warning = FALSE}
+
+data_shared <- data_yr_wtb[[2]] 
+
+exceed_shared <- crosstalk::SharedData$new(data_shared)
+
+  crosstalk::filter_select(
+    "yr_wtb",
+    "Select a WaterBody:",
+    multiple = TRUE,
+    sharedData = exceed_shared,
+    ~ water_body
+  )
+
+plotly::plot_ly(
+  data = exceed_shared,
+  y = ~ perc_exceeds,
+  x = ~ year,
+  type = 'scatter',
+  mode = 'line',
+  color = ~water_body
+)
+
+```
+
+### Waterbody:Parameter
+
+<h3> Figure 8: Waterbody:Parameter Heatmap </h3>
+A heatmap showing the percentage of samples that exceeded the replicate standard
+by waterbody and parameter. Red cells indicate a higher percentage of 
+samples exceeding the standard. <br>
+```{r, fig.width = 12, fig.height = 10, warning= FALSE}
+
+#heat map - param wtb
+p <- data_param_wtb[[2]] %>%
+  filter(!parameter %in% c("hardness", 
+                           "total_inorganic_carbon_2",
+                           "nitrate_nitrogen_auto_chemistry")) %>%
+  left_join(param_lookup_table %>%
+              select(parameter,label_name)) %>%
+  group_by(label_name) %>%
+  mutate(sum_exceeds = sum(perc_exceeds))  %>%
+  ungroup() %>%
+  mutate(label_name = forcats::fct_reorder(label_name, sum_exceeds, max)) %>%
+  rename(Percent_Exceedance = perc_exceeds) %>%
+  ggplot() +
+  geom_tile(aes(
+    y = label_name,
+    x = water_body,
+    text = samples,
+    labels = exceeds,
+    fill = Percent_Exceedance
+  )) +
+  geom_text(aes(
+    y = label_name,
+    x = water_body,
+    label = paste0(Percent_Exceedance, "%")
+  ),
+  size = 3) +
+  scale_fill_gradient(low = "#d6e4ff", high = "red") +
+  ylab("") +
+  xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+plotly::ggplotly(p)
+
+```
+
+<br>
+<h3> Figure 9: Water Body:Parameter Scater Plot</h3>
+Select a parameter to see the percentage of sample exceeding the replicate
+exceedance by water body  <br>
+```{r, echo = FALSE, warning = FALSE,fig.width= 10, fig.height=10}
+
+data_shared <- data_param_wtb[[2]] 
+
+exceed_shared <- crosstalk::SharedData$new(data_shared)
+
+  crosstalk::filter_select(
+    "param_wtb",
+    "Select a Parameter:",
+    multiple = TRUE,
+    sharedData = exceed_shared,
+    ~ parameter
+  )
+
+plotly::plot_ly(
+  data = exceed_shared,
+  y = ~ perc_exceeds,
+  x = ~ water_body,
+  type = 'scatter',
+  mode = 'line',
+  color = ~parameter
+)
+
+```
+
+### Exceedance Site Map
+
+<h3> Page Summary </h3>
+The  percentage of samples exceeding the replicate standard were 
+calculated by site, parameter, and depth. Select a parameter and depth
+to see how the percent exceedances vary by site. <br>
+
+```{r, echo = FALSE, fig.width=10,fig.height = 10}
+
+site_exceeds <- data_param_site[[2]] %>%
+  left_join(mmsd_wq_sites %>%
+              select(sitecode,
+                     latitude,
+                     longitude)) %>%
+  st_as_sf(coords = c("longitude","latitude"),crs = 4326) 
+
+site_shared <-  crosstalk::SharedData$new(site_exceeds)
+crosstalk::bscols(
+  crosstalk::filter_select(
+    "param_map",
+    "Select a Parameter:",
+    multiple = FALSE,
+    sharedData = site_shared,
+    ~parameter
+  ),
+   crosstalk::filter_select(
+    "depth_map",
+    "Select a Depth:",
+    multiple = FALSE,
+    sharedData = site_shared,
+    ~depth
+  )
+)
+
+crosstalk::filter_slider("range_exceed", "Percent Exceedance", 
+              site_shared, ~perc_exceeds, width = "100%")
+
+pal <- colorNumeric(
+  palette = colorRampPalette(c('green','yellow','orange','red'))(100), 
+  domain = site_shared$perc_exceeds)
+
+leaflet()%>%
+  leaflet::addPolylines(
+    data = mke_rivers,
+    color = "blue",
+    popup = ~ paste(" River: ", ROW_NAME)) %>% 
+  addCircles(data = site_shared,
+              color = ~pal(perc_exceeds),
+              fillColor = ~pal(perc_exceeds),
+             fillOpacity = 0.85,
+             radius = 200,
+              popup = ~ paste(" Site: ",sitecode,"<br>",
+                              " Exceedances: ",exceeds,"<br>",
+                              " Samples: ",samples,"<br>",
+                              " Percent Exceedance: ",perc_exceeds,"%",
+                              sep =""))%>%
+  addProviderTiles(providers$Esri.WorldImagery)%>%
+  addLegend("bottomright", pal  = pal, values = site_exceeds$perc_exceeds,
+            title = "Percent Exceedance",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1
+  )
+```
+
+

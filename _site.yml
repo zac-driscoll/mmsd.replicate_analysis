@@ -1,0 +1,8 @@
+name: "mmsd.replicate_analysis"
+output_dir: "."
+navbar:
+  title: "WQ Replicate Analysis"
+  left:
+    - text: "Home"
+      href: index.html
+
