@@ -18,52 +18,35 @@ knitr::opts_chunk$set(
 message = FALSE, warning = FALSE
 )
 
-data_yr <-  calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("year"))
-
-data_param <-  calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("parameter"))
-
-data_wtb <-  calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("water_body"))
-
-data_site<-  calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("sitecode","site_type"))
-
-data_yr_param <- calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("parameter","year"))
-
-data_param_wtb <- calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("parameter","water_body"))
-
-data_yr_wtb <- calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("year","water_body"))
-
-data_param_site <- calculate_rep_exceedance(
-  start_date = "2015-01-01", 
-  end_date = "2021-12-31",
-  grouping = c("parameter","sitecode","depth"))
-
+load("all_data.RData")
 
 ```
 
-### General Analysis
-<h3> Number of Exceedances over time </h3>
 
+### General Analysis
+<h3> Background </h3>
+<ul type="square">
+    <li>6 years of data was downloaded from LIMS (2015 - Present) </li>
+    <li>Percent Exceedance was calculated by year, parameter, waterbody and site. </li>
+    <li>Data were graphed and mapped in subsequent tabs. 
+</ul> 
+
+<h3> Major Conclusions </h3>
+<ul type="square">
+    <li>Samples in 2021 have a similar percent exceedance compared to previous years. </li>
+    <li> Chl-a, TSS, and VSS have substantially more exceedances compared to other parameters </li>
+    <li> The number of chl-a exceedances have dropped over time </li>
+    <li> Cedar Creek has a high percentage of VSS and TSS exceedances compared to 
+    other sites.  Root River has the most Chl-a exceedances. </li>
+    <li> The Kinnickinnic River has more exceedances compared to other waterbodies. It
+    also has more exceedances in 2021 compared to previous years (~13% of samples).</li>
+    <li> LC-02, RI-33,and HC-1 have the most exceedances compared to all sites (>15% samples collected)
+</ul> 
+
+
+<h3> Percent Exceedances over time </h3>
+The median percent exceedance by year is 6.4.  This is equal to the percent 
+currently observed in 2021.
 ```{r,  fig.width = 10, fig.height = 7}
 
 p <-data_yr[[2]] %>%
@@ -75,12 +58,12 @@ p <-data_yr[[2]] %>%
 
 plotly::ggplotly(p)
 
-
-
 ```
 <br>
-<h3> Percentage of Exceedances by Parameter </h3>
 
+<h3> Percentage of Exceedances by Parameter </h3>
+The three parameters that have the highest percent exceedances are chlorophyll a
+VSS, and TSS. 
 ```{r,  fig.width = 10, fig.height = 7}
 
 p <-data_param[[2]] %>%
@@ -101,6 +84,8 @@ plotly::ggplotly(p)
 ```
 <br>
 <h3> Percentage of Exceedances by Waterbody </h3>
+The Kinnickinnic River has the highest percentage of samples exceeding
+the replicate standard compared to all watersheds. 
 ```{r,  fig.width = 10, fig.height = 7}
 
 p <-data_wtb[[2]] %>%
@@ -116,9 +101,9 @@ plotly::ggplotly(p)
 
 ```
 
-
 <br>
 <h3> Percentage of Exceedances by Site </h3>
+Use the slider bar to filter sites by percent exceedance. 
 ```{r,  fig.width = 10, fig.height = 7}
 
 site_perc <- 
@@ -131,7 +116,7 @@ site_perc <-
 
 site_perc_shared <- crosstalk::SharedData$new(site_perc)
 
-crosstalk::filter_slider("range_exceed2", "Percent Exceedance", 
+crosstalk::filter_slider("range_exceed2", "Percent Exceedance Range", 
               site_perc_shared, ~perc_exceeds, width = "100%")
 
 pal <- colorNumeric(
@@ -168,7 +153,9 @@ leaflet()%>%
 <br>
 <h3> Figure 2: Heatmap - Parameter:Year </h3>
 A heatmap showing the percentage of samples that exceeded the replicate standard
-by year. Red cells indicate a higher percentage of samples exceeding the standard. <br>
+by year. Red cells indicate a higher percentage of samples exceeding the standard.
+The number of chlorophyll exceedances has steadily dropped over the last few years.
+<br>
 ```{r, fig.width = 10, fig.height = 7, warning= FALSE}
 
 #heat map - param wtb
@@ -240,7 +227,10 @@ plotly::plot_ly(
 
 <h3> Figure 5: Waterbdy:Year Heatmap </h3>
 A heatmap showing the percentage of samples that exceeded the replicate standard
-by waterbody Red cells indicate a higher percentage of samples exceeding the standard. <br>
+by waterbody Red cells indicate a higher percentage of samples exceeding the standard. 
+The Kinnickinnic River has more exceedances this year compared to previous years.
+
+<br>
 ```{r, fig.width = 10, fig.height = 7, warning= FALSE}
 p <- data_yr_wtb[[2]] %>%
   group_by(water_body) %>%
@@ -304,7 +294,8 @@ plotly::plot_ly(
 <h3> Figure 8: Waterbody:Parameter Heatmap </h3>
 A heatmap showing the percentage of samples that exceeded the replicate standard
 by waterbody and parameter. Red cells indicate a higher percentage of 
-samples exceeding the standard. <br>
+samples exceeding the standard. Cedar Creek has the highest observed exceedances
+for both TSS and VSS. <br>
 ```{r, fig.width = 12, fig.height = 10, warning= FALSE}
 
 #heat map - param wtb
